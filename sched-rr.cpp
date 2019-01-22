@@ -21,45 +21,45 @@ using namespace infos::util;
 class RoundRobinScheduler : public SchedulingAlgorithm
 {
 public:
-	/**
-	 * Returns the friendly name of the algorithm, for debugging and selection purposes.
-	 */
-	const char* name() const override { return "rr"; }
+    /**
+     * Returns the friendly name of the algorithm, for debugging and selection purposes.
+     */
+    const char* name() const override { return "rr"; }
 
-	/**
-	 * Called when a scheduling entity becomes eligible for running.
-	 * @param entity
-	 */
-	void add_to_runqueue(SchedulingEntity& entity) override
-	{
-	    UniqueIRQLock l;
-	    runqueue.enqueue(&entity);
-	}
+    /**
+     * Called when a scheduling entity becomes eligible for running.
+     * @param entity
+     */
+    void add_to_runqueue(SchedulingEntity& entity) override
+    {
+        UniqueIRQLock l;
+        runqueue.enqueue(&entity);
+    }
 
-	/**
-	 * Called when a scheduling entity is no longer eligible for running.
-	 * @param entity
-	 */
-	void remove_from_runqueue(SchedulingEntity& entity) override
-	{
-		UniqueIRQLock l;
-		runqueue.remove(&entity);
-	}
+    /**
+     * Called when a scheduling entity is no longer eligible for running.
+     * @param entity
+     */
+    void remove_from_runqueue(SchedulingEntity& entity) override
+    {
+        UniqueIRQLock l;
+        runqueue.remove(&entity);
+    }
 
-	/**
-	 * Called every time a scheduling event occurs, to cause the next eligible entity
-	 * to be chosen.  The next eligible entity might actually be the same entity, if
-	 * e.g. its timeslice has not expired.
-	 */
-	SchedulingEntity *pick_next_entity() override
-	{
-		if (runqueue.count() == 0) return NULL;
-		else {
-			SchedulingEntity *e = runqueue.pop();
-			add_to_runqueue(*e);
-			return e;
-		}
-	}
+    /**
+     * Called every time a scheduling event occurs, to cause the next eligible entity
+     * to be chosen.  The next eligible entity might actually be the same entity, if
+     * e.g. its timeslice has not expired.
+     */
+    SchedulingEntity *pick_next_entity() override
+    {
+        if (runqueue.count() == 0) return NULL;
+        else {
+            SchedulingEntity *e = runqueue.pop();
+            add_to_runqueue(*e);
+            return e;
+        }
+    }
 
 private:
 	// A list containing the current runqueue.
