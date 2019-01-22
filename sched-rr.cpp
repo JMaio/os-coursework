@@ -32,9 +32,8 @@ public:
 	 */
 	void add_to_runqueue(SchedulingEntity& entity) override
 	{
-        not_implemented();
-//        UniqueIRQLock l;
-//        runqueue.enqueue(&entity);
+	    UniqueIRQLock l;
+	    runqueue.enqueue(&entity);
 	}
 
 	/**
@@ -43,9 +42,8 @@ public:
 	 */
 	void remove_from_runqueue(SchedulingEntity& entity) override
 	{
-        not_implemented();
-//        UniqueIRQLock l;
-//        runqueue.remove(&entity);
+		UniqueIRQLock l;
+		runqueue.remove(&entity);
 	}
 
 	/**
@@ -55,9 +53,12 @@ public:
 	 */
 	SchedulingEntity *pick_next_entity() override
 	{
-	    not_implemented();
-//        if (runqueue.count() == 0) return NULL;
-//        else return runqueue.first();
+		if (runqueue.count() == 0) return NULL;
+		else {
+			SchedulingEntity *e = runqueue.pop();
+			add_to_runqueue(*e);
+			return e;
+		}
 	}
 
 private:
