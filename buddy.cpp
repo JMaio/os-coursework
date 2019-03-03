@@ -149,6 +149,7 @@ private:
 		
 		// firstly, remove the current block
 		remove_block(*block_pointer, source_order);
+		
 		// insert two new blocks into the order below
         PageDescriptor **buddy_start = insert_block(*block_pointer, source_order - 1);
         insert_block(buddy_of(*buddy_start, source_order - 1), source_order - 1);
@@ -220,16 +221,18 @@ public:
 		// check if area can be freed
 		if (_free_areas[order] == NULL) return;
 
+		// find the buddy
 		PageDescriptor *buddy = buddy_of(pgd, order);
 
 		PageDescriptor *left_block = pgd <= buddy ? pgd : buddy;
 		PageDescriptor *right_block = pgd > buddy ? pgd : buddy;
 
-
+		// if the left block's 'next_free' block is the right block, the buddies can be merged
 		if (left_block->next_free == right_block) {
 			mm_log.messagef(LogLevel::DEBUG, "merging = %p and %p", left_block, right_block);
-			// dump_state();
+
 			merge_block(&left_block, order);
+			// continue calling recursively upwards to eagerly merge
 			merge_recursive(left_block, order + 1);
 		}
 	}
@@ -263,29 +266,30 @@ public:
 		// check order within range
 		assert(order >= 0 && order <= MAX_ORDER - 1);
 
-		// // cannot merge any higher than MAX_ORDER
-		// if (order == MAX_ORDER - 1) return;
-		
-		// Iterate whilst there is a slot, and whilst the page descriptor pointer is numerically
-		// greater than what the slot is pointing to.
-		// mm_log.messagef(LogLevel::DEBUG, "size pgd = %d", ARRAY_SIZE(&pgd));
-		
 		insert_block(pgd, order);
 
 		merge_recursive(pgd, order);
-		
-
-		// free_pages(pgd, order + 1);
-
-
-		// // if this page and buddy are both free, merge and recursively call free_pages
-		// if (pgd->next_free == buddy_of(_free_areas[order], order)) {
-		// 	merge_block(&pgd, order);
-		// 	// review
-		// 	// pgd->next_free = pgd + pages_per_block(order);
-		// }
 	}
-	
+
+	/**
+	 * Recursively splits blocks until the target page is reached.
+	 * @param pgd The page descriptor of the page to isolate.
+	 */	
+	void isolate_page(PageDescriptor *pgd) {
+		// for (int i = 0; i <= 2; i++) {
+		// 	mm_log.messagef(LogLevel::DEBUG, "other loop %d", i);
+		// }
+		for (int o = MAX_ORDER - 1; o > 0; o--) {
+			mm_log.messagef(LogLevel::DEBUG, "breaking down order %d", o);
+			PageDescriptor *block = _free_areas[o];
+			while (block != NULL) {	
+				if (block <= pgd && pgd < (block + pages_per_block(o))) {
+					split_block(&block, o);
+				} else block = block->next_free;
+			}
+		}
+	}
+
 	/**
 	 * Reserves a specific page, so that it cannot be allocated.
 	 * @param pgd The page descriptor of the page to reserve.
@@ -293,7 +297,11 @@ public:
 	 */
 	bool reserve_page(PageDescriptor *pgd)
 	{
-		not_implemented();
+		isolate_page(pgd);
+
+
+		// remove_block(pgd, 0);
+		return true;
 	}
 	
 	/**
