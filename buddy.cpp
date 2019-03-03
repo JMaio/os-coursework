@@ -168,8 +168,12 @@ private:
 		// Make sure the area_pointer is correctly aligned.
 		assert(is_correct_alignment_for_order(*block_pointer, source_order));
 
-		// TODO: Implement this function
-		return nullptr;		
+		// remove each of the buddy blocks
+        remove_block(*block_pointer, source_order);
+        remove_block(buddy_of(*block_pointer, source_order), source_order);
+		// merge the two blocks into the order above
+        PageDescriptor **merged_buddies = insert_block(*block_pointer, source_order + 1);
+		return merged_buddies;
 	}
 	
 public:
