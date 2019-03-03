@@ -226,8 +226,21 @@ public:
 		// for the order on which it is being freed, for example, it is
 		// illegal to free page 1 in order-1.
 		assert(is_correct_alignment_for_order(pgd, order));
-		
-		not_implemented();
+
+		// check order within range
+		assert(order >= 0 && order <= MAX_ORDER - 1);
+
+		// cannot merge any higher than MAX_ORDER
+		if (order == MAX_ORDER - 1) return;
+
+		// check if area can be freed
+		if (_free_areas[order] == NULL) return;
+
+		// if this page and buddy are both free, merge and recursively call free_pages
+		if (pgd->next_free == buddy_of(_free_areas[order], order)) {
+			merge_block(&pgd, order);
+			free_pages(pgd, order + 1);
+		}
 	}
 	
 	/**
