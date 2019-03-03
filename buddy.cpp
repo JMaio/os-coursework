@@ -145,8 +145,12 @@ private:
 		// Make sure the block_pointer is correctly aligned.
 		assert(is_correct_alignment_for_order(*block_pointer, source_order));
 		
-		// TODO: Implement this function
-		return nullptr;		
+		// firstly, remove the current block
+		remove_block(*block_pointer, source_order);
+		// insert two new blocks into the order below
+        PageDescriptor **buddy_start = insert_block(*block_pointer, source_order - 1);
+        insert_block(buddy_of(*buddy_start, source_order - 1), source_order - 1);
+		return *buddy_start;
 	}
 	
 	/**
