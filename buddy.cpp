@@ -195,7 +195,21 @@ public:
 	 */
 	PageDescriptor *alloc_pages(int order) override
 	{
-		not_implemented();
+		mm_log.messagef(LogLevel::DEBUG, "called alloc_pages on order %d", order);
+		// check presence of free blocks in target order
+		if (_free_areas[order] == NULL) {
+			// no blocks, call allocation on order above
+	    	PageDescriptor *pgd = alloc_pages(order + 1);
+			mm_log.messagef(LogLevel::DEBUG, "got pgd %d from order %d", pgd, order + 1);
+			return split_block(&pgd, order + 1);
+		} else {
+			mm_log.messagef(LogLevel::DEBUG, "free_areas => %p", _free_areas[order]);
+
+			PageDescriptor *pgd = _free_areas[order];
+			return pgd;
+		}
+		
+		// not_implemented();
 	}
 	
 	/**
