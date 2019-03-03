@@ -233,8 +233,17 @@ public:
 		
 		// TODO: Initialise the free area linked list for the maximum order
 		// to initialise the allocation algorithm.
-		
-		not_implemented();
+
+		// calculate number of blocks for order 16
+		uint64_t max_pages_block = pages_per_block(MAX_ORDER - 1);
+		uint64_t nblocks = nr_page_descriptors / max_pages_block;
+		// start each block at a page descriptor
+		for (uint64_t i = 0; i < nblocks; i++) {
+			insert_block(&page_descriptors[i * max_pages_block], MAX_ORDER - 1);
+		}
+
+		return true;
+
 	}
 
 	/**
