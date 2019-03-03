@@ -171,10 +171,15 @@ private:
 		assert(is_correct_alignment_for_order(*block_pointer, source_order));
 
 		// remove each of the buddy blocks
+		PageDescriptor *buddy = buddy_of(*block_pointer, source_order);
         remove_block(*block_pointer, source_order);
-        remove_block(buddy_of(*block_pointer, source_order), source_order);
+        remove_block(buddy, source_order);
+
+		// ensure leftmost block is used for insertion of the block
+		PageDescriptor *left_block = *block_pointer <= buddy ? *block_pointer : buddy;
+
 		// merge the two blocks into the order above
-        PageDescriptor **merged_buddies = insert_block(*block_pointer, source_order + 1);
+        PageDescriptor **merged_buddies = insert_block(left_block, source_order + 1);
 		return merged_buddies;
 	}
 	
@@ -190,29 +195,58 @@ public:
 	}
 	
 	/**
+	 * Recursively split the free areas until the target order has been reached
+	 * @param order
+	 * @return The page descriptor of the leftmost free block
+ 	 */	
+	PageDescriptor *split_recursive(int order) {
+		if (_free_areas[order] == NULL) {
+			PageDescriptor *pgd = split_recursive(order + 1);
+			return split_block(&pgd, order + 1);
+		} else {
+			return _free_areas[order];
+			// return split_block(&_free_areas[order], order);
+		}
+	}
+
+	/**
+	 * Recursively merge the free areas until the target order has been reached
+	 * @param pgd The page descriptor of the block to merge
+	 * @param order The order of the blocks to merge
+ 	 */	
+	void merge_recursive(PageDescriptor *pgd, int order) {
+		// cannot merge any higher than MAX_ORDER
+		if (order == MAX_ORDER - 1) return;
+		// check if area can be freed
+		if (_free_areas[order] == NULL) return;
+
+		PageDescriptor *buddy = buddy_of(pgd, order);
+
+		PageDescriptor *left_block = pgd <= buddy ? pgd : buddy;
+		PageDescriptor *right_block = pgd > buddy ? pgd : buddy;
+
+
+		if (left_block->next_free == right_block) {
+			mm_log.messagef(LogLevel::DEBUG, "merging = %p and %p", left_block, right_block);
+			// dump_state();
+			merge_block(&left_block, order);
+			merge_recursive(left_block, order + 1);
+		}
+	}
+
+	/**
 	 * Allocates 2^order number of contiguous pages
 	 * @param order The power of two, of the number of contiguous pages to allocate.
 	 * @return Returns a pointer to the first page descriptor for the newly allocated page range, or NULL if
 	 * allocation failed.
 	 */
-	PageDescriptor *alloc_pages(int order) override
-	{
-		// mm_log.messagef(LogLevel::DEBUG, "called alloc_pages on order %d", order);
-		// check presence of free blocks in target order
-		if (_free_areas[order] == NULL) {
-			// no blocks, call allocation on order above
-	    	PageDescriptor *pgd = alloc_pages(order + 1);
-			// mm_log.messagef(LogLevel::DEBUG, "got pgd %d from order %d", pgd, order + 1);
+	PageDescriptor *alloc_pages(int order) override {
+		// split recursively
+		PageDescriptor *pgd = split_recursive(order);
 
-			return split_block(&pgd, order + 1);
-		} else {
-			// mm_log.messagef(LogLevel::DEBUG, "free_areas => %p", _free_areas[order]);
+		remove_block(pgd, order);
 
-			PageDescriptor *pgd = _free_areas[order];
-			return pgd;
-		}
-		
-		// not_implemented();
+		return pgd;
 	}
 	
 	/**
@@ -220,8 +254,7 @@ public:
 	 * @param pgd A pointer to an array of page descriptors to be freed.
 	 * @param order The power of two number of contiguous pages to free.
 	 */
-	void free_pages(PageDescriptor *pgd, int order) override
-	{
+	void free_pages(PageDescriptor *pgd, int order) override {
 		// Make sure that the incoming page descriptor is correctly aligned
 		// for the order on which it is being freed, for example, it is
 		// illegal to free page 1 in order-1.
@@ -230,17 +263,27 @@ public:
 		// check order within range
 		assert(order >= 0 && order <= MAX_ORDER - 1);
 
-		// cannot merge any higher than MAX_ORDER
-		if (order == MAX_ORDER - 1) return;
+		// // cannot merge any higher than MAX_ORDER
+		// if (order == MAX_ORDER - 1) return;
+		
+		// Iterate whilst there is a slot, and whilst the page descriptor pointer is numerically
+		// greater than what the slot is pointing to.
+		// mm_log.messagef(LogLevel::DEBUG, "size pgd = %d", ARRAY_SIZE(&pgd));
+		
+		insert_block(pgd, order);
 
-		// check if area can be freed
-		if (_free_areas[order] == NULL) return;
+		merge_recursive(pgd, order);
+		
 
-		// if this page and buddy are both free, merge and recursively call free_pages
-		if (pgd->next_free == buddy_of(_free_areas[order], order)) {
-			merge_block(&pgd, order);
-			free_pages(pgd, order + 1);
-		}
+		// free_pages(pgd, order + 1);
+
+
+		// // if this page and buddy are both free, merge and recursively call free_pages
+		// if (pgd->next_free == buddy_of(_free_areas[order], order)) {
+		// 	merge_block(&pgd, order);
+		// 	// review
+		// 	// pgd->next_free = pgd + pages_per_block(order);
+		// }
 	}
 	
 	/**
