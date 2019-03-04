@@ -276,17 +276,40 @@ public:
 	 * @param pgd The page descriptor of the page to isolate.
 	 */	
 	void isolate_page(PageDescriptor *pgd) {
-		// for (int i = 0; i <= 2; i++) {
-		// 	mm_log.messagef(LogLevel::DEBUG, "other loop %d", i);
-		// }
-		for (int o = MAX_ORDER - 1; o > 0; o--) {
-			mm_log.messagef(LogLevel::DEBUG, "breaking down order %d", o);
+		int largest_order = MAX_ORDER - 1;
+
+		// locate the order to start breaking down from
+		for (int o = 0; o < largest_order; o++) {
 			PageDescriptor *block = _free_areas[o];
-			while (block != NULL) {	
+			while (block) {
 				if (block <= pgd && pgd < (block + pages_per_block(o))) {
-					split_block(&block, o);
+					largest_order = o;
+					break;
 				} else block = block->next_free;
 			}
+		}
+
+		// mm_log.messagef(LogLevel::DEBUG, "largest order --- %d", largest_order);
+		// break down larger pages until order 0 is reached
+		for (int o = largest_order; o > 0; o--) {
+			PageDescriptor *block = _free_areas[o];
+			// mm_log.messagef(LogLevel::DEBUG, "breaking down order %d, block %p", o, block);
+			// dump_state();
+
+			bool flag = false;
+			while (!flag) {
+				// mm_log.messagef(LogLevel::DEBUG, "check block %p", block);
+
+				// if pgd fits within this order block, and it exists
+				if (block <= pgd && pgd < (block + pages_per_block(o))) {
+					// mm_log.messagef(LogLevel::DEBUG, "--> splitting block %p", block);
+					split_block(&block, o);
+					flag = true;
+					// mm_log.messagef(LogLevel::DEBUG, "split block %d", block);
+					// dump_state();
+				} else block = block->next_free;
+			}
+			// mm_log.messagef(LogLevel::DEBUG, "completed while");
 		}
 	}
 
@@ -295,13 +318,32 @@ public:
 	 * @param pgd The page descriptor of the page to reserve.
 	 * @return Returns TRUE if the reservation was successful, FALSE otherwise.
 	 */
-	bool reserve_page(PageDescriptor *pgd)
-	{
+	bool reserve_page(PageDescriptor *pgd) {
+		// mm_log.messagef(LogLevel::DEBUG, "reserve page %p", pgd);
+		
 		isolate_page(pgd);
 
+		// assume page not free
+		bool flag = false;
+		// iterate over the free pages of order zero
+		PageDescriptor *free_pgd = _free_areas[0];
+		while (free_pgd) {
+			// page in free areas
+			if (free_pgd == pgd) {
+				flag = true;
+				break;
+			}
+			// continue looking
+			free_pgd = free_pgd->next_free;
+		}
 
-		// remove_block(pgd, 0);
-		return true;
+		// page not free, fail reserving
+		if (flag) {
+			// mm_log.messagef(LogLevel::DEBUG, "removed page %p", pgd);
+			remove_block(pgd, 0);
+		}
+		
+		return flag;
 	}
 	
 	/**
