@@ -17,14 +17,14 @@ using namespace infos::kernel;
 using namespace infos::mm;
 using namespace infos::util;
 
-#define MAX_ORDER	17
+#define MAX_ORDER 17
 
 /**
  * A buddy page allocation algorithm.
  */
 class BuddyPageAllocator : public PageAllocatorAlgorithm
 {
-private:
+  private:
 	/**
 	 * Returns the number of pages that comprise a 'block', in a given order.
 	 * @param order The order to base the calculation off of.
@@ -37,7 +37,7 @@ private:
 		 */
 		return (1 << order);
 	}
-	
+
 	/**
 	 * Returns TRUE if the supplied page descriptor is correctly aligned for the 
 	 * given order.  Returns FALSE otherwise.
@@ -50,7 +50,7 @@ private:
 		// it divides evenly into the number pages in a block of the given order.
 		return (sys.mm().pgalloc().pgd_to_pfn(pgd) % pages_per_block(order)) == 0;
 	}
-	
+
 	/** Given a page descriptor, and an order, returns the buddy PGD.  The buddy could either be
 	 * to the left or the right of PGD, in the given order.
 	 * @param pgd The page descriptor to find the buddy for.
@@ -60,26 +60,26 @@ private:
 	PageDescriptor *buddy_of(PageDescriptor *pgd, int order)
 	{
 		// (1) Make sure 'order' is within range
-		if (order >= MAX_ORDER) {
+		if (order >= MAX_ORDER)
+		{
 			return NULL;
 		}
 
 		// (2) Check to make sure that PGD is correctly aligned in the order
-		if (!is_correct_alignment_for_order(pgd, order)) {
+		if (!is_correct_alignment_for_order(pgd, order))
+		{
 			return NULL;
 		}
-				
+
 		// (3) Calculate the page-frame-number of the buddy of this page.
 		// * If the PFN is aligned to the next order, then the buddy is the next block in THIS order.
 		// * If it's not aligned, then the buddy must be the previous block in THIS order.
-		uint64_t buddy_pfn = is_correct_alignment_for_order(pgd, order + 1) ?
-			sys.mm().pgalloc().pgd_to_pfn(pgd) + pages_per_block(order) : 
-			sys.mm().pgalloc().pgd_to_pfn(pgd) - pages_per_block(order);
-		
+		uint64_t buddy_pfn = is_correct_alignment_for_order(pgd, order + 1) ? sys.mm().pgalloc().pgd_to_pfn(pgd) + pages_per_block(order) : sys.mm().pgalloc().pgd_to_pfn(pgd) - pages_per_block(order);
+
 		// (4) Return the page descriptor associated with the buddy page-frame-number.
 		return sys.mm().pgalloc().pfn_to_pgd(buddy_pfn);
 	}
-	
+
 	/**
 	 * Inserts a block into the free list of the given order.  The block is inserted in ascending order.
 	 * @param pgd The page descriptor of the block to insert.
@@ -92,21 +92,22 @@ private:
 		// Starting from the _free_area array, find the slot in which the page descriptor
 		// should be inserted.
 		PageDescriptor **slot = &_free_areas[order];
-		
+
 		// Iterate whilst there is a slot, and whilst the page descriptor pointer is numerically
 		// greater than what the slot is pointing to.
-		while (*slot && pgd > *slot) {
+		while (*slot && pgd > *slot)
+		{
 			slot = &(*slot)->next_free;
 		}
-		
+
 		// Insert the page descriptor into the linked list.
 		pgd->next_free = *slot;
 		*slot = pgd;
-		
+
 		// Return the insert point (i.e. slot)
 		return slot;
 	}
-	
+
 	/**
 	 * Removes a block from the free list of the given order.  The block MUST be present in the free-list, otherwise
 	 * the system will panic.
@@ -117,18 +118,34 @@ private:
 	{
 		// Starting from the _free_area array, iterate until the block has been located in the linked-list.
 		PageDescriptor **slot = &_free_areas[order];
-		while (*slot && pgd != *slot) {
+		while (*slot && pgd != *slot)
+		{
 			slot = &(*slot)->next_free;
 		}
 
 		// Make sure the block actually exists.  Panic the system if it does not.
 		assert(*slot == pgd);
-		
+
 		// Remove the block from the free list.
 		*slot = pgd->next_free;
 		pgd->next_free = NULL;
 	}
-	
+
+	/**
+	 * Return the left block of a pair of buddies
+	 * @param pgd The page descriptor, which represents the pair
+	 * @return The page descriptor of the left block
+ 	 */
+	PageDescriptor *left_buddy(PageDescriptor *pgd, int order)
+	{
+		// find the buddy
+		PageDescriptor *buddy = buddy_of(pgd, order);
+		// calculate the left block
+		PageDescriptor *left_block = pgd <= buddy ? pgd : buddy;
+
+		return left_block;
+	}
+
 	/**
 	 * Given a pointer to a block of free memory in the order "source_order", this function will
 	 * split the block in half, and insert it into the order below.
@@ -141,21 +158,21 @@ private:
 	{
 		// Make sure there is an incoming pointer.
 		assert(*block_pointer);
-		// mm_log.messagef(LogLevel::DEBUG, "[ split_block ] - asserted block pointer");
-		
+
 		// Make sure the block_pointer is correctly aligned.
 		assert(is_correct_alignment_for_order(*block_pointer, source_order));
-		// mm_log.messagef(LogLevel::DEBUG, "[ split_block ] - asserted correct align");
-		
+
 		// firstly, remove the current block
 		remove_block(*block_pointer, source_order);
-		
+
 		// insert two new blocks into the order below
-        PageDescriptor **buddy_start = insert_block(*block_pointer, source_order - 1);
-        insert_block(buddy_of(*buddy_start, source_order - 1), source_order - 1);
+		PageDescriptor **buddy_start = insert_block(*block_pointer, source_order - 1);
+
+		insert_block(buddy_of(*buddy_start, source_order - 1), source_order - 1);
+
 		return *buddy_start;
 	}
-	
+
 	/**
 	 * Takes a block in the given source order, and merges it (and it's buddy) into the next order.
 	 * This function assumes both the source block and the buddy block are in the free list for the
@@ -167,46 +184,39 @@ private:
 	PageDescriptor **merge_block(PageDescriptor **block_pointer, int source_order)
 	{
 		assert(*block_pointer);
-		
+
 		// Make sure the area_pointer is correctly aligned.
 		assert(is_correct_alignment_for_order(*block_pointer, source_order));
 
 		// remove each of the buddy blocks
-		PageDescriptor *buddy = buddy_of(*block_pointer, source_order);
-        remove_block(*block_pointer, source_order);
-        remove_block(buddy, source_order);
+		remove_block(*block_pointer, source_order);
+		remove_block(buddy_of(*block_pointer, source_order), source_order);
 
 		// ensure leftmost block is used for insertion of the block
-		PageDescriptor *left_block = *block_pointer <= buddy ? *block_pointer : buddy;
+		PageDescriptor *left_block = left_buddy(*block_pointer, source_order);
 
 		// merge the two blocks into the order above
-        PageDescriptor **merged_buddies = insert_block(left_block, source_order + 1);
+		PageDescriptor **merged_buddies = insert_block(left_block, source_order + 1);
 		return merged_buddies;
 	}
-	
-public:
-	/**
-	 * Constructs a new instance of the Buddy Page Allocator.
-	 */
-	BuddyPageAllocator() {
-		// Iterate over each free area, and clear it.
-		for (unsigned int i = 0; i < ARRAY_SIZE(_free_areas); i++) {
-			_free_areas[i] = NULL;
-		}
-	}
-	
+
 	/**
 	 * Recursively split the free areas until the target order has been reached
 	 * @param order
 	 * @return The page descriptor of the leftmost free block
- 	 */	
-	PageDescriptor *split_recursive(int order) {
-		if (_free_areas[order] == NULL) {
+ 	 */
+	PageDescriptor *split_recursive(int order)
+	{
+		// if no free blocks exist in this order, try the next order up
+		if (_free_areas[order] == NULL)
+		{
 			PageDescriptor *pgd = split_recursive(order + 1);
+			// once returned, split the upper orders down the way
 			return split_block(&pgd, order + 1);
-		} else {
+		}
+		else
+		{
 			return _free_areas[order];
-			// return split_block(&_free_areas[order], order);
 		}
 	}
 
@@ -214,26 +224,85 @@ public:
 	 * Recursively merge the free areas until the target order has been reached
 	 * @param pgd The page descriptor of the block to merge
 	 * @param order The order of the blocks to merge
- 	 */	
-	void merge_recursive(PageDescriptor *pgd, int order) {
+ 	 */
+	void merge_recursive(PageDescriptor *pgd, int order)
+	{
 		// cannot merge any higher than MAX_ORDER
-		if (order == MAX_ORDER - 1) return;
+		if (order == MAX_ORDER - 1)
+			return;
 		// check if area can be freed
-		if (_free_areas[order] == NULL) return;
+		if (_free_areas[order] == NULL)
+			return;
 
-		// find the buddy
-		PageDescriptor *buddy = buddy_of(pgd, order);
-
-		PageDescriptor *left_block = pgd <= buddy ? pgd : buddy;
-		PageDescriptor *right_block = pgd > buddy ? pgd : buddy;
+		PageDescriptor *left_block = left_buddy(pgd, order);
+		PageDescriptor *right_block = buddy_of(left_block, order);
 
 		// if the left block's 'next_free' block is the right block, the buddies can be merged
-		if (left_block->next_free == right_block) {
-			mm_log.messagef(LogLevel::DEBUG, "merging = %p and %p", left_block, right_block);
-
+		if (left_block->next_free == right_block)
+		{
 			merge_block(&left_block, order);
 			// continue calling recursively upwards to eagerly merge
 			merge_recursive(left_block, order + 1);
+		}
+	}
+
+	/**
+	 * Recursively splits blocks until the target page is reached.
+	 * @param pgd The page descriptor of the page to isolate.
+	 */
+	void isolate_page(PageDescriptor *pgd)
+	{
+		int largest_order = MAX_ORDER - 1;
+
+		// locate the order to start breaking down from
+		for (int o = 0; o < largest_order; o++)
+		{
+			PageDescriptor *block = _free_areas[o];
+			while (block)
+			{
+				// this block encompasses the pgd - break down from here
+				if (block <= pgd && pgd < (block + pages_per_block(o)))
+				{
+					largest_order = o;
+					break;
+				}
+				else
+				{
+					block = block->next_free;
+				}
+			}
+		}
+
+		// break down larger pages until order 0 is reached
+		for (int o = largest_order; o > 0; o--)
+		{
+			PageDescriptor *block = _free_areas[o];
+			while (block)
+			{
+				// if pgd fits within this order block, and it exists, break it down until order 0
+				if (block <= pgd && pgd < (block + pages_per_block(o)))
+				{
+					split_block(&block, o);
+					break;
+				}
+				else
+				{
+					block = block->next_free;
+				}
+			}
+		}
+	}
+
+  public:
+	/**
+	 * Constructs a new instance of the Buddy Page Allocator.
+	 */
+	BuddyPageAllocator()
+	{
+		// Iterate over each free area, and clear it.
+		for (unsigned int i = 0; i < ARRAY_SIZE(_free_areas); i++)
+		{
+			_free_areas[i] = NULL;
 		}
 	}
 
@@ -243,74 +312,33 @@ public:
 	 * @return Returns a pointer to the first page descriptor for the newly allocated page range, or NULL if
 	 * allocation failed.
 	 */
-	PageDescriptor *alloc_pages(int order) override {
-		// split recursively
+	PageDescriptor *alloc_pages(int order) override
+	{
+		// split recursively until free blocks exist in this order
 		PageDescriptor *pgd = split_recursive(order);
 
 		remove_block(pgd, order);
-
 		return pgd;
 	}
-	
+
 	/**
 	 * Frees 2^order contiguous pages.
 	 * @param pgd A pointer to an array of page descriptors to be freed.
 	 * @param order The power of two number of contiguous pages to free.
 	 */
-	void free_pages(PageDescriptor *pgd, int order) override {
+	void free_pages(PageDescriptor *pgd, int order) override
+	{
 		// Make sure that the incoming page descriptor is correctly aligned
 		// for the order on which it is being freed, for example, it is
 		// illegal to free page 1 in order-1.
 		assert(is_correct_alignment_for_order(pgd, order));
 
-		// check order within range
+		// check if order is within range
 		assert(order >= 0 && order <= MAX_ORDER - 1);
-
+		// insert a free block at the location
 		insert_block(pgd, order);
-
+		// eagerly merge blocks up the orders
 		merge_recursive(pgd, order);
-	}
-
-	/**
-	 * Recursively splits blocks until the target page is reached.
-	 * @param pgd The page descriptor of the page to isolate.
-	 */	
-	void isolate_page(PageDescriptor *pgd) {
-		int largest_order = MAX_ORDER - 1;
-
-		// locate the order to start breaking down from
-		for (int o = 0; o < largest_order; o++) {
-			PageDescriptor *block = _free_areas[o];
-			while (block) {
-				if (block <= pgd && pgd < (block + pages_per_block(o))) {
-					largest_order = o;
-					break;
-				} else block = block->next_free;
-			}
-		}
-
-		// mm_log.messagef(LogLevel::DEBUG, "largest order --- %d", largest_order);
-		// break down larger pages until order 0 is reached
-		for (int o = largest_order; o > 0; o--) {
-			PageDescriptor *block = _free_areas[o];
-			// mm_log.messagef(LogLevel::DEBUG, "breaking down order %d, block %p", o, block);
-			// dump_state();
-
-			bool flag = false;
-			while (!flag) {
-				// mm_log.messagef(LogLevel::DEBUG, "check block %p", block);
-
-				// if pgd fits within this order block, and it exists
-				if (block <= pgd && pgd < (block + pages_per_block(o))) {
-					// mm_log.messagef(LogLevel::DEBUG, "--> splitting block %p", block);
-					split_block(&block, o);
-					flag = true;
-					// mm_log.messagef(LogLevel::DEBUG, "split block %d", block);
-					// dump_state();
-				} else block = block->next_free;
-			}
-			// mm_log.messagef(LogLevel::DEBUG, "completed while");
-		}
 	}
 
 	/**
@@ -318,18 +346,19 @@ public:
 	 * @param pgd The page descriptor of the page to reserve.
 	 * @return Returns TRUE if the reservation was successful, FALSE otherwise.
 	 */
-	bool reserve_page(PageDescriptor *pgd) {
-		// mm_log.messagef(LogLevel::DEBUG, "reserve page %p", pgd);
-		
+	bool reserve_page(PageDescriptor *pgd)
+	{
+
 		isolate_page(pgd);
 
 		// assume page not free
 		bool flag = false;
-		// iterate over the free pages of order zero
+		// iterate over the free pages (blocks of order zero)
 		PageDescriptor *free_pgd = _free_areas[0];
-		while (free_pgd) {
-			// page in free areas
-			if (free_pgd == pgd) {
+		while (free_pgd)
+		{
+			if (free_pgd == pgd)
+			{
 				flag = true;
 				break;
 			}
@@ -337,15 +366,15 @@ public:
 			free_pgd = free_pgd->next_free;
 		}
 
-		// page not free, fail reserving
-		if (flag) {
-			// mm_log.messagef(LogLevel::DEBUG, "removed page %p", pgd);
+		// if page is free, reserve it
+		if (flag)
+		{
 			remove_block(pgd, 0);
 		}
-		
+
 		return flag;
 	}
-	
+
 	/**
 	 * Initialises the allocation algorithm.
 	 * @return Returns TRUE if the algorithm was successfully initialised, FALSE otherwise.
@@ -353,27 +382,28 @@ public:
 	bool init(PageDescriptor *page_descriptors, uint64_t nr_page_descriptors) override
 	{
 		mm_log.messagef(LogLevel::DEBUG, "Buddy Allocator Initialising pd=%p, nr=0x%lx", page_descriptors, nr_page_descriptors);
-		
-		// TODO: Initialise the free area linked list for the maximum order
-		// to initialise the allocation algorithm.
 
-		// calculate number of blocks for order 16
+		// calculate number of blocks for order 16 (MAX_ORDER - 1)
 		uint64_t max_pages_block = pages_per_block(MAX_ORDER - 1);
 		uint64_t nblocks = nr_page_descriptors / max_pages_block;
+
 		// start each block at a page descriptor
-		for (uint64_t i = 0; i < nblocks; i++) {
-			insert_block(&page_descriptors[i * max_pages_block], MAX_ORDER - 1);
+		for (uint64_t i = 0; i < nblocks; i++)
+		{
+			PageDescriptor *block_pgd = *insert_block(&page_descriptors[i * max_pages_block], MAX_ORDER - 1);
+			// if this new pgd exists, continue
+			if (block_pgd == NULL)
+				return false;
 		}
 
 		return true;
-
 	}
 
 	/**
 	 * Returns the friendly name of the allocation algorithm, for debugging and selection purposes.
 	 */
-	const char* name() const override { return "buddy"; }
-	
+	const char *name() const override { return "buddy"; }
+
 	/**
 	 * Dumps out the current state of the buddy system
 	 */
@@ -381,26 +411,27 @@ public:
 	{
 		// Print out a header, so we can find the output in the logs.
 		mm_log.messagef(LogLevel::DEBUG, "BUDDY STATE:");
-		
+
 		// Iterate over each free area.
-		for (unsigned int i = 0; i < ARRAY_SIZE(_free_areas); i++) {
+		for (unsigned int i = 0; i < ARRAY_SIZE(_free_areas); i++)
+		{
 			char buffer[256];
 			snprintf(buffer, sizeof(buffer), "[%d] ", i);
-						
+
 			// Iterate over each block in the free area.
 			PageDescriptor *pg = _free_areas[i];
-			while (pg) {
+			while (pg)
+			{
 				// Append the PFN of the free block to the output buffer.
 				snprintf(buffer, sizeof(buffer), "%s%lx ", buffer, sys.mm().pgalloc().pgd_to_pfn(pg));
 				pg = pg->next_free;
 			}
-			
+
 			mm_log.messagef(LogLevel::DEBUG, "%s", buffer);
 		}
 	}
 
-	
-private:
+  private:
 	PageDescriptor *_free_areas[MAX_ORDER];
 };
 
