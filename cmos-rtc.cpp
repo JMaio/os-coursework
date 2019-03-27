@@ -37,10 +37,26 @@ class CMOSRTC : public RTC
 		cmos_data = 0x71
 	};
 
+	/**
+	 * Obtains the value from the requested RTC register.
+	 * @param reg The register to request.
+	 * @return Returns the value in the register.
+	 */
 	uint8_t get_rtc_register(uint8_t reg)
 	{
 		__outb(cmos_address, reg);
 		return __inb(cmos_data);
+	}
+
+	/**
+	 * Converts from binary coded decimal to decimal.
+	 * @param bcd The value to be converted
+	 * @return Returns the converted value.
+	 */
+	uint8_t bcd2dec(uint8_t bcd) {
+		uint8_t hi = ((bcd & 0b11110000) >> 4) * 10;
+		uint8_t lo =   bcd & 0b00001111;
+		return hi + lo;
 	}
 
 	/**
@@ -50,7 +66,7 @@ class CMOSRTC : public RTC
 	 */
 	void read_timepoint(RTCTimePoint &tp) override
 	{
-		syslog.messagef(LogLevel::DEBUG, "reading rtc timepoint!");
+		syslog.messagef(LogLevel::DEBUG, "reading rtc timepoint");
 
 		// request interrupt lock
 		UniqueIRQLock l;
@@ -62,21 +78,30 @@ class CMOSRTC : public RTC
 		uint8_t cmos_mem[rtc_size];
 
 		// wait for update start
-		while (!(get_rtc_register(0xa) & update_mask))
-			;
+		while (!(get_rtc_register(0xa) & update_mask));
 		// update has begun, wait until finished
-		while (get_rtc_register(0xa) & update_mask)
-			;
+		while (get_rtc_register(0xa) & update_mask);
 
 		syslog.messagef(LogLevel::DEBUG, "rtc update complete!");
 
-		for (uint8_t i = 0; i < rtc_size; i++)
-		{
+		for (uint8_t i = 0; i < rtc_size; i++) {
 			cmos_mem[i] = get_rtc_register(i);
 		}
-
+		
+		// mask and isolate bit 2
 		uint8_t encoding = get_rtc_register(0xb) & 1 << 2;
-		// register_offsets = {0x0, 0x2, 0x4, 0x7, 0x8, 0x9};
+
+		uint8_t register_offsets[] = {0x0, 0x2, 0x4, 0x7, 0x8, 0x9};
+		if (!encoding) {
+			// binary coded decimal
+			syslog.messagef(LogLevel::DEBUG, "binary coded decimal detected - converting...");
+			
+			for (uint8_t r : register_offsets) {
+				uint8_t c = bcd2dec(cmos_mem[r]);
+				// syslog.messagef(LogLevel::DEBUG, "converted #%d: %8b --> %8b", r, cmos_mem[r], c);
+				cmos_mem[r] = c;
+			}
+		}
 		
 		tp.seconds = cmos_mem[0x0];
 		tp.minutes = cmos_mem[0x2];
@@ -86,12 +111,6 @@ class CMOSRTC : public RTC
 		tp.month = cmos_mem[0x8];
 		tp.year = cmos_mem[0x9];
 
-		for (uint8_t &r : cmos_mem)
-		{
-			syslog.messagef(LogLevel::DEBUG, "r = %8b", r);
-		}
-
-		// uint8_t update = __inb(0x71);
 		syslog.messagef(LogLevel::DEBUG, "done reading rtc timepoint!");
 	}
 };
